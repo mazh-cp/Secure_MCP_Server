@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Example wrapper that loads secrets from Vault into env, then execs the
+# real entrypoint. Secrets never touch disk on the broker host.
+#
+# Usage: vault-env-load.sh <identity_file> <entrypoint> [entrypoint_args...]
+#
+# Adjust the `vault kv get` paths to match your Vault layout. Replace with
+# the equivalent CLI for AWS Secrets Manager / GCP Secret Manager / etc. if
+# Vault is not your secrets backend.
+#
+# This is a template — copy to vault-env-load.sh, edit, chmod 0750, and
+# point the systemd unit's ExecStart at the copy.
+
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+  echo "usage: $0 <identity_file> <entrypoint> [args...]" >&2
+  exit 64
+fi
+
+IDENTITY_FILE="$1"
+ENTRYPOINT="$2"
+shift 2
+
+if [[ ! -r "$IDENTITY_FILE" ]]; then
+  echo "identity file not readable: $IDENTITY_FILE" >&2
+  exit 1
+fi
+
+# --- Pull secrets from Vault ---
+# Assumes VAULT_ADDR and VAULT_TOKEN (or an AppRole / agent sidecar) are
+# already in env for this script.
+export CHECKPOINT_TE_API_KEY="$(vault kv get -field=api_key secret/secure-mcp/checkpoint-te)"
+export LAKERA_GUARD_API_KEY="$(vault kv get -field=api_key secret/secure-mcp/lakera-guard)"
+# ThreatCloud key — only needed if an intel scope is granted. Leave the path
+# empty / commented out for TE-only or ai_guard-only deployments.
+export CHECKPOINT_TC_API_KEY="$(vault kv get -field=api_key secret/secure-mcp/threatcloud 2>/dev/null || true)"
+# HMAC key for tamper-evident audit chaining (strongly recommended).
+export SECURE_MCP_AUDIT_HMAC_KEY="$(vault kv get -field=hmac_key secret/secure-mcp/audit 2>/dev/null || true)"
+
+# --- Non-secret runtime config ---
+export SECURE_MCP_IDENTITY_FILE="$IDENTITY_FILE"
+export CHECKPOINT_TE_BASE_URL="${CHECKPOINT_TE_BASE_URL:-https://te.checkpoint.com}"
+export CHECKPOINT_TC_BASE_URL="${CHECKPOINT_TC_BASE_URL:-https://rep.checkpoint.com}"
+export LAKERA_GUARD_BASE_URL="${LAKERA_GUARD_BASE_URL:-https://api.lakera.ai}"
+export SECURE_MCP_AUDIT_LOG_PATH="${SECURE_MCP_AUDIT_LOG_PATH:-/var/log/secure-mcp/audit.jsonl}"
+export SECURE_MCP_UPLOAD_DIR="${SECURE_MCP_UPLOAD_DIR:-/var/lib/secure-mcp/staging}"
+export SECURE_MCP_MAX_UPLOAD_BYTES="${SECURE_MCP_MAX_UPLOAD_BYTES:-33554432}"
+export SECURE_MCP_RATE_LIMIT_PER_MIN="${SECURE_MCP_RATE_LIMIT_PER_MIN:-60}"
+export SECURE_MCP_DLP_MODE="${SECURE_MCP_DLP_MODE:-redact}"
+export SECURE_MCP_DAILY_QUOTA="${SECURE_MCP_DAILY_QUOTA:-0}"
+
+# Fail closed if a required secret fetch returned an empty value.
+[[ -n "$CHECKPOINT_TE_API_KEY" ]] || { echo "TE key empty" >&2; exit 1; }
+[[ -n "$LAKERA_GUARD_API_KEY"   ]] || { echo "Lakera key empty" >&2; exit 1; }
+
+# --- Hand off ---
+exec "$ENTRYPOINT" "$@"
