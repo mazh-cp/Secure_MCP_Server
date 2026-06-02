@@ -1,0 +1,26 @@
+// Least-privilege polkit rule for the secure-mcp management console.
+//
+// Install to: /etc/polkit-1/rules.d/49-secure-mcp-restart.rules
+//
+// Authorizes the `secure-mcp` service user to RESTART (only) systemd units
+// matching `secure-mcp@*.service` — and nothing else. The console talks to
+// PID1 over D-Bus, so this needs NO setuid and is compatible with the admin
+// unit's NoNewPrivileges=true (unlike the sudo path).
+//
+// Adjust the user name and unit glob to match your deployment. Keep the verb
+// restricted to "restart"; do not broaden to "manage-units" generally.
+
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (subject.user !== "secure-mcp") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    var verb = action.lookup("verb");
+    if (verb === "restart" && unit && /^secure-mcp@[A-Za-z0-9._-]+\.service$/.test(unit)) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

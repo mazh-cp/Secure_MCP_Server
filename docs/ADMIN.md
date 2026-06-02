@@ -14,19 +14,29 @@ Each running instance is bound to one identity file. The file declares:
   ai_guard}` this instance is permitted to expose. **Always set the
   smallest set the caller actually needs.**
 
+Identity files live in `/etc/secure-mcp/identities/<caller_id>.json`, and the
+systemd instance name equals the caller_id, so caller `soc-analyst` maps to
+`secure-mcp@soc-analyst.service`. Manage these from the admin console, or by
+hand:
+
 ### Adding a new caller
 
 ```bash
-sudo install -m 0600 -o secure-mcp /dev/stdin /etc/secure-mcp/identity-<name>.json <<'EOF'
-{ "caller_id": "<name>", "allowed_tools": ["ai_guard"] }
+sudo install -m 0600 -o secure-mcp /dev/stdin /etc/secure-mcp/identities/<caller_id>.json <<'EOF'
+{ "caller_id": "<caller_id>", "allowed_tools": ["ai_guard"] }
 EOF
+sudo systemctl enable --now secure-mcp@<caller_id>
 ```
 
-Point the launcher's `SECURE_MCP_IDENTITY_FILE` at the new file, restart.
+(In the console: Identities & Scopes → create, then Instances → restart.)
 
 ### Revoking a caller
 
-Stop the server instance bound to that identity file, then delete the file.
+```bash
+sudo systemctl disable --now secure-mcp@<caller_id>
+sudo rm /etc/secure-mcp/identities/<caller_id>.json
+```
+
 Audit log entries already written remain — that is intentional.
 
 ## Secret rotation

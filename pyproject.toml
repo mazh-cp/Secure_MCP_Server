@@ -1,6 +1,6 @@
 [project]
 name = "secure-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Hardened MCP broker for Check Point Threat Emulation and Lakera Guard."
 requires-python = ">=3.11"
 dependencies = [
@@ -17,6 +17,8 @@ dev = [
 
 [project.scripts]
 secure-mcp = "secure_mcp.server:main"
+secure-mcp-admin = "secure_mcp.admin.server:main"
+secure-mcp-edge = "secure_mcp.edge.server:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -20,29 +20,41 @@ git clone <repo> secure-mcp && cd secure-mcp
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-pytest    # confirm 42 tests pass
+pytest    # confirm tests pass
 ```
 
 ## 3. Create the identity file
 
-The identity file declares which tool scopes this instance is allowed to
-expose. Different MCP clients get different identity files — that is how
-scopes are partitioned under the stdio transport.
+The identity file declares which tool scopes a caller is allowed to expose.
+Different MCP clients get different identity files — that is how scopes are
+partitioned under the stdio transport.
+
+Identity files live in one directory, named `<caller_id>.json`. This single
+convention lines up the systemd template unit, the admin console, the restart
+allowlist, and the polkit rule:
+
+```
+caller_id            = soc-analyst                         (slug: [A-Za-z0-9._-])
+identity file        = /etc/secure-mcp/identities/soc-analyst.json
+systemd instance     = secure-mcp@soc-analyst.service      (%i = caller_id)
+```
 
 ```bash
-sudo install -d -m 0700 -o secure-mcp /etc/secure-mcp
-sudo install -m 0600 -o secure-mcp identity.example.json /etc/secure-mcp/identity.json
-sudo $EDITOR /etc/secure-mcp/identity.json
+sudo install -d -m 0700 -o secure-mcp /etc/secure-mcp/identities
+sudo install -m 0600 -o secure-mcp identity.example.json /etc/secure-mcp/identities/soc-analyst.json
+sudo $EDITOR /etc/secure-mcp/identities/soc-analyst.json
 ```
 
 ```json
 {
-  "caller_id": "soc-analyst-desktop",
+  "caller_id": "soc-analyst",
   "allowed_tools": ["threat_emulation", "ai_guard"]
 }
 ```
 
-Set `allowed_tools` to the smallest set the caller actually needs.
+Set `allowed_tools` to the smallest set the caller actually needs. You can also
+create and edit these files from the admin console — see
+[docs/CONSOLE.md](CONSOLE.md).
 
 ## 4. Provision secrets
 
@@ -109,21 +121,27 @@ real entrypoint with them in env. The client never sees the keys.
 
 ## 7. Production deployment
 
-For server-style deployments, use the systemd unit at
-[deploy/secure-mcp.service](../deploy/secure-mcp.service) as a starting
-point. It runs the server as a dedicated unprivileged user with hardening
-flags (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, etc.).
+For server-style deployments, use the systemd template unit at
+[deploy/secure-mcp@.service](../deploy/secure-mcp@.service) as a starting
+point. It runs each caller's broker as a dedicated unprivileged user with
+hardening flags (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`,
+etc.), reading `/etc/secure-mcp/identities/%i.json` where `%i` is the caller_id.
 
-Create the service user once:
+Create the service user once, then start an instance per caller:
 
 ```bash
 sudo useradd --system --shell /usr/sbin/nologin --home /var/lib/secure-mcp secure-mcp
 sudo install -d -m 0750 -o secure-mcp -g secure-mcp /var/lib/secure-mcp/staging
 sudo install -d -m 0700 -o secure-mcp -g secure-mcp /var/log/secure-mcp
+sudo install -d -m 0700 -o secure-mcp -g secure-mcp /etc/secure-mcp/identities
+
+sudo systemctl enable --now secure-mcp@soc-analyst    # reads identities/soc-analyst.json
 ```
 
 Place secrets via your secret-provisioning agent (Vault Agent, AWS SSM, etc.)
-or via the wrapper script — not via static env files in `/etc`.
+or via the wrapper script — not via static env files in `/etc`. For the admin
+console, deploy [deploy/secure-mcp-admin.service](../deploy/secure-mcp-admin.service)
+with [deploy/admin-env-load.sh.example](../deploy/admin-env-load.sh.example).
 
 ## 8. Next steps
 

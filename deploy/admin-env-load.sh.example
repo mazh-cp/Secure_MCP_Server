@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Example wrapper that loads admin-console secrets from Vault into env, then
+# execs the console entrypoint. Secrets never touch disk on the host.
+#
+# Usage: admin-env-load.sh <entrypoint> [entrypoint_args...]
+# Referenced by deploy/secure-mcp-admin.service. Copy to admin-env-load.sh,
+# edit the Vault paths, chmod 0750, point ExecStart at the copy.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: $0 <entrypoint> [args...]" >&2
+  exit 64
+fi
+
+ENTRYPOINT="$1"
+shift
+
+# --- Secrets from Vault (assumes VAULT_ADDR/VAULT_TOKEN or an agent sidecar) ---
+export SECURE_MCP_ADMIN_TOKEN="$(vault kv get -field=token secret/secure-mcp/admin)"
+# Same HMAC key the MCP server uses, so the console can VERIFY the audit chain.
+export SECURE_MCP_AUDIT_HMAC_KEY="$(vault kv get -field=hmac_key secret/secure-mcp/audit 2>/dev/null || true)"
+
+# --- Non-secret runtime config ---
+export SECURE_MCP_ADMIN_HOST="${SECURE_MCP_ADMIN_HOST:-127.0.0.1}"
+export SECURE_MCP_ADMIN_PORT="${SECURE_MCP_ADMIN_PORT:-8765}"
+export SECURE_MCP_ADMIN_SESSION_TTL="${SECURE_MCP_ADMIN_SESSION_TTL:-1800}"
+# Identity files the console manages — must match the directory the MCP server
+# template unit reads (/etc/secure-mcp/identities/%i.json).
+export SECURE_MCP_IDENTITY_DIR="${SECURE_MCP_IDENTITY_DIR:-/etc/secure-mcp/identities}"
+export SECURE_MCP_CONFIG_FILE="${SECURE_MCP_CONFIG_FILE:-/etc/secure-mcp/config.json}"
+export SECURE_MCP_AUDIT_LOG_PATH="${SECURE_MCP_AUDIT_LOG_PATH:-/var/log/secure-mcp/audit.jsonl}"
+export SECURE_MCP_ADMIN_AUDIT_LOG="${SECURE_MCP_ADMIN_AUDIT_LOG:-/var/log/secure-mcp/admin-audit.jsonl}"
+export CHECKPOINT_TE_BASE_URL="${CHECKPOINT_TE_BASE_URL:-https://te.checkpoint.com}"
+export CHECKPOINT_TC_BASE_URL="${CHECKPOINT_TC_BASE_URL:-https://rep.checkpoint.com}"
+export LAKERA_GUARD_BASE_URL="${LAKERA_GUARD_BASE_URL:-https://api.lakera.ai}"
+
+# In-console restart (opt-in). Allowlist of units the console may restart.
+# Leave empty to disable. Unit instance names = caller_id (see template unit).
+export SECURE_MCP_MANAGED_UNITS="${SECURE_MCP_MANAGED_UNITS:-}"
+export SECURE_MCP_RESTART_USE_SUDO="${SECURE_MCP_RESTART_USE_SUDO:-false}"
+
+# TLS for non-loopback binds (console refuses non-loopback without these).
+export SECURE_MCP_ADMIN_TLS_CERT="${SECURE_MCP_ADMIN_TLS_CERT:-}"
+export SECURE_MCP_ADMIN_TLS_KEY="${SECURE_MCP_ADMIN_TLS_KEY:-}"
+
+# Fail closed if the admin token fetch returned empty.
+[[ -n "$SECURE_MCP_ADMIN_TOKEN" ]] || { echo "admin token empty" >&2; exit 1; }
+
+exec "$ENTRYPOINT" "$@"

@@ -75,15 +75,53 @@ Every tool call runs `ctx.preflight(scope)` → **authorize → quota → rate**
 validate → (DLP on egress paths) → upstream → audit, with both success and
 denial recorded to the tamper-evident log.
 
+## Management console
+
+`secure-mcp-admin` is a Check Point-branded web console for operating the
+broker: manage caller identities/scopes, set DLP mode / quota / rate limit,
+review the tamper-evident audit trail, and probe upstream health — with
+contextual guidance. Auth-gated (admin token → short-lived session),
+loopback-by-default, TLS-required for remote access, and it never exposes
+secret values. It manages persistent config (applied on MCP server restart)
+and gives live inspection. See [docs/CONSOLE.md](docs/CONSOLE.md).
+
+```bash
+SECURE_MCP_ADMIN_TOKEN=... SECURE_MCP_IDENTITY_DIR=... secure-mcp-admin
+# → http://127.0.0.1:8765
+```
+
+## Edge PDP (browser policy enforcement over the internet)
+
+`secure-mcp-edge` is an internet-facing **Policy Decision Point** for browser
+extensions: devices enroll for a short-lived token, then ask for URL verdicts
+(`allow`/`warn`/`block`) instead of carrying Check Point keys and scanning
+locally. Phase 1 is **indicator-only** (URL/domain/hash) — see
+[docs/EDGE-INTEGRATION.md](docs/EDGE-INTEGRATION.md). Reuses the ThreatCloud
+adapter, rate limit, quota, and tamper-evident audit; refuses non-loopback
+binds without TLS.
+
+```bash
+SECURE_MCP_EDGE_ENROLLMENT_SECRET=... CHECKPOINT_TC_API_KEY=... secure-mcp-edge
+# → POST /edge/v1/enroll  then  POST /edge/v1/url/verdict
+```
+
+Phase 2 adds a **central policy authority**: author per-group browser policy in
+the admin console (Browser Policy tab), and the edge serves it as an
+Ed25519-signed envelope (`GET /edge/v1/policy`, ETag-polled) with telemetry
+(`POST /edge/v1/events`) flowing into the tamper-evident audit log. The plugin
+verifies the signature with WebCrypto before applying. Devices poll — no MCP
+restart needed for policy changes.
+
 ## Quickstart
 
 See [docs/SETUP.md](docs/SETUP.md) for the full first-time walkthrough.
-See [docs/ADMIN.md](docs/ADMIN.md) for ongoing operations.
+See [docs/ADMIN.md](docs/ADMIN.md) for ongoing operations, and
+[docs/CONSOLE.md](docs/CONSOLE.md) for the management console.
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                  # 42 tests, ~1s
+pytest                  # 177 tests
 ```
 
 ## Upstream API caveats

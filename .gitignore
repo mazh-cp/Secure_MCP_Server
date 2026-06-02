@@ -14,3 +14,8 @@ build/
 dist/
 .pytest_cache/
 .mypy_cache/
+.claude/
+.claudepreview/
+.dev-audit.jsonl
+.dev-uploads/
+docs/console-preview.html

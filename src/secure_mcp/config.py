@@ -77,11 +77,28 @@ def _load_hmac_key() -> bytes | None:
         return raw.encode("utf-8")
 
 
-def _load_dlp_mode() -> str:
-    mode = os.environ.get("SECURE_MCP_DLP_MODE", "redact").lower()
+def _load_dlp_mode(override: str | None) -> str:
+    mode = (override or os.environ.get("SECURE_MCP_DLP_MODE", "redact")).lower()
     if mode not in {"block", "redact", "flag"}:
-        raise ConfigError(f"SECURE_MCP_DLP_MODE must be block|redact|flag, got '{mode}'")
+        raise ConfigError(f"DLP mode must be block|redact|flag, got '{mode}'")
     return mode
+
+
+def _load_op_overrides() -> dict:
+    """Operational config written by the admin console (SECURE_MCP_CONFIG_FILE).
+    When present, these values take precedence over env for the operational
+    knobs (dlp_mode, daily_quota, rate_limit_per_minute). Secrets are never
+    sourced from this file — only from env/Vault."""
+    path = os.environ.get("SECURE_MCP_CONFIG_FILE")
+    if not path or not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (ValueError, OSError) as e:
+        raise ConfigError(f"invalid SECURE_MCP_CONFIG_FILE: {e}") from e
+    allowed = {"dlp_mode", "daily_quota", "rate_limit_per_minute"}
+    return {k: v for k, v in data.items() if k in allowed}
 
 
 def load_settings() -> Settings:
@@ -92,6 +109,7 @@ def load_settings() -> Settings:
     # anti_phishing scope is granted. Validated at adapter use, not here, so a
     # TE-only or ai_guard-only deployment doesn't need it.
     tc_key = os.environ.get("CHECKPOINT_TC_API_KEY", "")
+    op = _load_op_overrides()
     return Settings(
         identity=identity,
         checkpoint_te_base_url=_require_https(
@@ -107,10 +125,12 @@ def load_settings() -> Settings:
         audit_log_path=Path(_require_env("SECURE_MCP_AUDIT_LOG_PATH")),
         upload_dir=Path(_require_env("SECURE_MCP_UPLOAD_DIR")),
         max_upload_bytes=int(os.environ.get("SECURE_MCP_MAX_UPLOAD_BYTES", "33554432")),
-        rate_limit_per_minute=int(os.environ.get("SECURE_MCP_RATE_LIMIT_PER_MIN", "60")),
-        dlp_mode=_load_dlp_mode(),
+        rate_limit_per_minute=int(op.get("rate_limit_per_minute",
+                                  os.environ.get("SECURE_MCP_RATE_LIMIT_PER_MIN", "60"))),
+        dlp_mode=_load_dlp_mode(op.get("dlp_mode")),
         audit_hmac_key=_load_hmac_key(),
-        daily_quota=int(os.environ.get("SECURE_MCP_DAILY_QUOTA", "0")),
+        daily_quota=int(op.get("daily_quota",
+                        os.environ.get("SECURE_MCP_DAILY_QUOTA", "0"))),
         threatcloud_base_url=_require_https(
             os.environ.get("CHECKPOINT_TC_BASE_URL", "https://rep.checkpoint.com"),
             "CHECKPOINT_TC_BASE_URL",

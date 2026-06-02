@@ -8,6 +8,16 @@ from secure_mcp.config import ConfigError
 from secure_mcp.server import build_server
 
 
+@pytest.fixture(autouse=True)
+def _no_real_dns(monkeypatch):
+    """build_server() constructs real SecureHTTPClients, which resolve the
+    upstream hosts via getaddrinfo. Stub it to a public IP so these tests are
+    hermetic (no network, no DNS flakiness)."""
+    import secure_mcp.http_client as hc
+    monkeypatch.setattr(hc.socket, "getaddrinfo",
+                        lambda host, port, *a, **k: [(0, 0, 0, "", ("93.184.216.34", port or 0))])
+
+
 def _env(monkeypatch, tmp_path: Path, scopes: list[str], **extra):
     identity = tmp_path / "identity.json"
     identity.write_text(json.dumps({"caller_id": "t", "allowed_tools": scopes}))
@@ -52,5 +62,5 @@ def test_threatcloud_scope_with_key_registers_coverage(monkeypatch, tmp_path):
 
 def test_invalid_dlp_mode_fails_closed(monkeypatch, tmp_path):
     _env(monkeypatch, tmp_path, ["ai_guard"], SECURE_MCP_DLP_MODE="nonsense")
-    with pytest.raises(ConfigError, match="DLP_MODE"):
+    with pytest.raises(ConfigError, match="DLP mode"):
         build_server()

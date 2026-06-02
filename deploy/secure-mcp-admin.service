@@ -1,0 +1,56 @@
+# systemd unit for the secure-mcp management console.
+# Install as /etc/systemd/system/secure-mcp-admin.service.
+#
+# Point ExecStart at a wrapper that loads SECURE_MCP_ADMIN_TOKEN (and the audit
+# HMAC key) from Vault into env, then execs the console. For remote access,
+# provide TLS cert/key and set SECURE_MCP_ADMIN_HOST to the bind address —
+# the console refuses to bind non-loopback without TLS.
+#
+# In-console restart (SECURE_MCP_MANAGED_UNITS): with NoNewPrivileges=true below,
+# use a POLKIT rule to authorize the secure-mcp user to manage exactly the
+# secure-mcp@*.service units (systemctl talks to PID1 over D-Bus — no setuid
+# needed). The sudo path (SECURE_MCP_RESTART_USE_SUDO=true) requires setuid and
+# is INCOMPATIBLE with NoNewPrivileges=true — drop that flag only if you must
+# use sudo. Leave the feature disabled (empty allowlist) if not needed.
+
+[Unit]
+Description=Secure MCP management console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=secure-mcp
+Group=secure-mcp
+WorkingDirectory=/opt/secure-mcp
+
+# Wrapper pulls SECURE_MCP_ADMIN_TOKEN + SECURE_MCP_AUDIT_HMAC_KEY from Vault,
+# then execs the console entrypoint.
+ExecStart=/opt/secure-mcp/deploy/admin-env-load.sh /opt/secure-mcp/.venv/bin/secure-mcp-admin
+
+Restart=on-failure
+RestartSec=5s
+
+# --- Hardening ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Console reads identities/config/audit and writes identity + config + admin-audit.
+ReadWritePaths=/etc/secure-mcp /var/log/secure-mcp
+
+[Install]
+WantedBy=multi-user.target
