@@ -1,6 +1,6 @@
 [project]
 name = "secure-mcp"
-version = "0.2.0"
+version = "0.7.0"
 description = "Hardened MCP broker for Check Point Threat Emulation and Lakera Guard."
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +19,12 @@ dev = [
 secure-mcp = "secure_mcp.server:main"
 secure-mcp-admin = "secure_mcp.admin.server:main"
 secure-mcp-edge = "secure_mcp.edge.server:main"
+secure-mcp-guard = "secure_mcp.mcpguard.server:main"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore:Use `streamable_http_client`:DeprecationWarning",
+]
 
 [build-system]
 requires = ["hatchling"]

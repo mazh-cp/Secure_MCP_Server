@@ -10,7 +10,10 @@ from secure_mcp.audit import AuditLogger
 KEY = b"admin-test-hmac-key"
 
 
-def _cfg(tmp_path: Path, hmac_key=KEY) -> AdminConfig:
+KMK = bytes(range(32))
+
+
+def _cfg(tmp_path: Path, hmac_key=KEY, master_key=None) -> AdminConfig:
     idir = tmp_path / "identities"
     idir.mkdir(exist_ok=True)
     return AdminConfig(
@@ -30,6 +33,8 @@ def _cfg(tmp_path: Path, hmac_key=KEY) -> AdminConfig:
         session_ttl_sec=1800,
         policy_dir=tmp_path / "policies",
         keys_dir=tmp_path / "keys",
+        keystore_path=tmp_path / "secrets.enc",
+        keystore_master_key=master_key,
     )
 
 
@@ -161,11 +166,45 @@ def test_browser_policy_author_list_and_version(tmp_path):
     svc.close()
 
 
+def test_secret_set_is_write_only_and_audited(tmp_path, monkeypatch):
+    from secure_mcp.keystore import SECRET_CATALOG
+    for m in SECRET_CATALOG.values():
+        monkeypatch.delenv(m["env"], raising=False)
+    svc = AdminService(_cfg(tmp_path, master_key=KMK))
+    out = svc.set_secret("checkpoint_te", "te-SECRET-value")
+    assert "te-SECRET-value" not in json.dumps(out)        # value never returned
+    listing = svc.list_secrets()
+    row = next(r for r in listing["secrets"] if r["name"] == "checkpoint_te")
+    assert row["present"] and row["source"] == "keystore"
+    assert "te-SECRET-value" not in json.dumps(listing)     # value never in status
+    svc.close()
+    log = (tmp_path / "admin-audit.jsonl").read_text()
+    assert "set_secret" in log and "te-SECRET-value" not in log  # audit has fp, not value
+
+
+def test_set_secret_without_keystore_rejected(tmp_path):
+    svc = AdminService(_cfg(tmp_path))  # no master key
+    with pytest.raises(AdminValidationError):
+        svc.set_secret("checkpoint_te", "x")
+    svc.close()
+
+
+def test_unknown_and_delete_secret(tmp_path, monkeypatch):
+    from secure_mcp.keystore import SECRET_CATALOG
+    for m in SECRET_CATALOG.values():
+        monkeypatch.delenv(m["env"], raising=False)
+    svc = AdminService(_cfg(tmp_path, master_key=KMK))
+    with pytest.raises(AdminValidationError):
+        svc.set_secret("bogus", "v")
+    svc.set_secret("lakera_guard", "v")
+    assert svc.delete_secret("lakera_guard")["deleted"] is True
+    svc.close()
+
+
 def test_guidance_flags_least_privilege_and_hmac(tmp_path, monkeypatch):
     svc = AdminService(_cfg(tmp_path, hmac_key=None))
-    svc.upsert_identity("god", sorted(["threat_emulation", "file_sandboxing",
-                                       "ai_guard", "threat_intel", "url_category",
-                                       "anti_phishing"]))
+    from secure_mcp.scopes import ALL_SCOPES
+    svc.upsert_identity("god", sorted(ALL_SCOPES))  # every scope → least-privilege warning
     monkeypatch.setattr(svc, "upstream_health", lambda: [])  # stay offline
     tips = svc.guidance()
     titles = " ".join(t["title"] for t in tips)

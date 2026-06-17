@@ -16,6 +16,8 @@ displays or edits secret key *values* — those stay in Vault/env.
 | **Audit Trail** | Chain-verification status, event/denial/DLP counts, recent entries | Read-only |
 | **Upstream Health** | Live TLS reachability probe to TE / ThreatCloud / Lakera (no credentials sent) | Read-only |
 | **Instances** | View managed systemd units and restart them to apply config/identity changes | Opt-in; allowlisted |
+| **Browser Policy** | Author per-group browser policy; served signed by the edge PDP | Persistent; devices poll |
+| **Keys & Secrets** | Provision/rotate upstream API keys — **write-only, AES-256-GCM, fingerprint-only display** | Keystore mode only |
 
 Every mutation is recorded to a **separate** tamper-evident admin-audit log
 (`SECURE_MCP_ADMIN_AUDIT_LOG`) — separate because two processes appending to
@@ -55,6 +57,29 @@ secure-mcp-admin
 Open the URL, sign in with the admin token, and manage the deployment.
 For remote access, set the TLS cert/key and a non-loopback host — see
 [deploy/secure-mcp-admin.service](../deploy/secure-mcp-admin.service).
+
+## Keys & Secrets (policy-compliant key provisioning)
+
+The console can provision/rotate the upstream API keys **without ever violating
+the secrets posture**:
+
+- **Write-only.** The API accepts a value to store; **no endpoint ever returns
+  it**. The UI shows only a non-reversible **fingerprint** (`sha256:…`) + status
+  (SET/MISSING, source env|keystore, last-updated).
+- **Encrypted at rest.** Stored **AES-256-GCM** under a master KEK injected from
+  KMS/Vault (`SECURE_MCP_KEYSTORE_MASTER_KEY`); file is `0600`, gitignored, never
+  plaintext config. AAD binds each ciphertext to its logical name.
+- **Two modes:** with a master key set → set/rotate/delete (local/standalone
+  provisioning); without → secrets are env/Vault-managed and the list is
+  read-only status.
+- **Precedence:** `load_settings` resolves each upstream key as **env (Vault) >
+  keystore**. New values apply on the consuming service's next (re)start.
+- **Test** runs a live connectivity probe for an upstream key (sends it only to
+  its own upstream; never returns it). Every set/rotate/delete/test is audited
+  with the fingerprint, never the value.
+
+This is the deliberate alternative to a plaintext key form: operational
+"add keys" UX that keeps secrets out of code, config, and version control.
 
 ## The restart-to-apply model (important)
 

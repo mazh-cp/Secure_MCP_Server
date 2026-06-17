@@ -38,7 +38,7 @@ header h1{color:#fff;font-size:15px;font-weight:bold;letter-spacing:.3px}
 header h1 span{color:#ee0c5d}
 header .who{margin-left:auto;color:#cfc6cc;font-size:12px}
 header .who button{margin-left:12px;background:none;border:1px solid #6b5560;color:#fff;padding:5px 10px;font-size:11px;cursor:pointer}
-nav{background:#fff;border-bottom:1px solid #d9d5d8;padding:0 28px;display:flex;gap:4px}
+nav{background:#fff;border-bottom:1px solid #d9d5d8;padding:0 28px;display:flex;flex-wrap:wrap;gap:4px}
 nav button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 16px;font-size:13px;font-weight:bold;color:#6b5560;cursor:pointer}
 nav button.active{color:#ee0c5d;border-bottom-color:#ee0c5d}
 main{padding:24px 28px;max-width:1180px}
@@ -126,6 +126,8 @@ async function loadAll(){
     renderOverview(o);renderIdentities(o.identities);renderConfig(o.op_config);
     renderAudit(o.audit);renderHealth(o.health);renderRestart(o.restart);
     const pol=await api('GET','/api/policies');renderPolicies(pol.policies);
+    const sec=await api('GET','/api/secrets');renderSecrets(sec);
+    const about=await api('GET','/api/about');renderAbout(about);
   }catch(e){/* 401 already handled */}
 }
 
@@ -270,6 +272,51 @@ async function savePolicy(){
   }catch(e){$('#pol-err').textContent=e.message;}
 }
 
+function renderSecrets(d){
+  $('#sec-banner').innerHTML = d.keystore_enabled
+    ? `<div class="tip ok"><div class="t">Keystore enabled</div><div class="d">Secrets can be provisioned here (AES-256-GCM, write-only). Values are never displayed.</div></div>`
+    : `<div class="tip warning"><div class="t">Keystore not configured</div><div class="d">Secrets are managed via env/Vault. Set SECURE_MCP_KEYSTORE_MASTER_KEY to enable in-console provisioning. The list below is read-only status.</div></div>`;
+  $('#sec-rows').innerHTML=d.secrets.map(s=>{
+    const badge=s.present?'<span class="badge b-ok">SET</span>':'<span class="badge b-warn">MISSING</span>';
+    const src=s.source?`<span class="chip">${esc(s.source)}</span>`:'';
+    const fp=s.fingerprint?`<code>${esc(s.fingerprint)}</code>`:'—';
+    let actions='';
+    if(s.testable&&s.present) actions+=`<button class="btn sm sec" onclick="testSecret('${esc(s.name)}')">Test</button> `;
+    if(d.keystore_enabled&&s.source==='keystore') actions+=`<button class="btn sm danger" onclick="delSecret('${esc(s.name)}')">Delete</button>`;
+    return `<tr><td>${esc(s.label)}<br><small>${esc(s.name)}</small></td><td>${badge}</td><td>${src}</td><td>${fp}</td><td>${actions}</td></tr>`;
+  }).join('');
+  $('#sec-name').innerHTML=d.secrets.map(s=>`<option value="${esc(s.name)}">${esc(s.label)}</option>`).join('');
+  $('#sec-value').disabled=!d.keystore_enabled;
+}
+async function setSecret(){
+  $('#sec-err').textContent='';$('#sec-ok').textContent='';
+  const name=$('#sec-name').value, value=$('#sec-value').value;
+  if(!value){$('#sec-err').textContent='Enter a value.';return;}
+  try{const d=await api('PUT','/api/secrets',{name,value});
+    $('#sec-value').value='';
+    $('#sec-ok').textContent=`Saved ${name} (${d.fingerprint}). Restart the consuming service to apply.`;
+    loadAll();
+  }catch(e){$('#sec-err').textContent=e.message;}
+}
+async function testSecret(name){
+  try{const d=await api('POST','/api/secrets/'+encodeURIComponent(name)+'/test');
+    alert(d.configured===false?'Not configured':(d.reachable?('Reachable — HTTP '+d.status):('Unreachable — '+(d.error||'error'))));
+  }catch(e){alert(e.message);}
+}
+async function delSecret(name){
+  if(!confirm('Delete secret '+name+'? The consuming service loses it on next restart.'))return;
+  try{await api('DELETE','/api/secrets/'+encodeURIComponent(name));loadAll();}catch(e){alert(e.message);}
+}
+
+function renderAbout(d){
+  if(d.version){$('#hdr-ver').textContent='v'+d.version;$('#rel-ver').textContent='v'+d.version;}
+  $('#rm-body').innerHTML=(d.readme||[]).map(s=>
+    `<div class="panel"><h3>${esc(s.title)}</h3><div class="note" style="white-space:pre-wrap;color:#231f20;font-size:13px;font-style:normal">${esc(s.body)}</div></div>`).join('');
+  $('#rel-body').innerHTML=(d.release_notes||[]).map(r=>
+    `<div class="panel"><h3>v${esc(r.version)} — ${esc(r.title)} <span style="font-weight:normal;color:#6b5560">${esc(r.date)}</span></h3>
+     <ul style="margin:0 0 0 18px;font-size:13px">${(r.changes||[]).map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`).join('');
+}
+
 window.addEventListener('DOMContentLoaded',()=>{
   if(SESSION) loadAll(); else showLogin();
 });
@@ -285,7 +332,7 @@ def render_console_html() -> str:
 <body>
 <header>
   <div class="brand">{_LOGO_WHITE}<div class="sep"></div><h1>secure-mcp <span>·</span> Management Console</h1></div>
-  <div class="who">Check Point Security Broker<button onclick="logout()">Sign out</button></div>
+  <div class="who">Check Point Security Broker<span id="hdr-ver" style="margin:0 12px"></span><button onclick="logout()">Sign out</button></div>
 </header>
 <nav>
   <button class="active" onclick="tab('overview',this)">Overview</button>
@@ -295,6 +342,9 @@ def render_console_html() -> str:
   <button onclick="tab('health',this)">Upstream Health</button>
   <button onclick="tab('instances',this)">Instances</button>
   <button onclick="tab('policy',this)">Browser Policy</button>
+  <button onclick="tab('secrets',this)">Keys &amp; Secrets</button>
+  <button onclick="tab('readme',this)">Read Me</button>
+  <button onclick="tab('releases',this)">Release Notes</button>
 </nav>
 <main>
   <section id="tab-overview" class="tab active">
@@ -377,6 +427,33 @@ def render_console_html() -> str:
       <div class="note" id="pol-ok"></div>
       <div class="note">Served to devices as an Ed25519-signed envelope by the edge PDP. Devices apply it on their next poll — no MCP server restart needed.</div>
     </div>
+  </section>
+
+  <section id="tab-secrets" class="tab">
+    <h2>Keys &amp; Secrets</h2>
+    <div id="sec-banner"></div>
+    <table><thead><tr><th>Secret</th><th>Status</th><th>Source</th><th>Fingerprint</th><th></th></tr></thead>
+    <tbody id="sec-rows"></tbody></table>
+    <div class="panel" style="margin-top:22px"><h3>Set / Rotate Secret</h3>
+      <label class="f">Secret</label>
+      <select id="sec-name"></select>
+      <label class="f">Value <span style="font-weight:normal">(write-only — never displayed back)</span></label>
+      <input type="password" id="sec-value" autocomplete="off">
+      <button class="btn" onclick="setSecret()">Save Secret</button>
+      <div class="err" id="sec-err"></div>
+      <div class="note" id="sec-ok"></div>
+      <div class="note">Stored <strong>AES-256-GCM</strong> encrypted under a KMS/Vault-injected master key. The API never returns a value and the UI shows only a non-reversible fingerprint. Provisioning requires the keystore master key; otherwise secrets stay env/Vault-managed and this list is read-only. New values apply on the consuming service's next (re)start.</div>
+    </div>
+  </section>
+
+  <section id="tab-readme" class="tab">
+    <h2>Read Me</h2>
+    <div id="rm-body"></div>
+  </section>
+
+  <section id="tab-releases" class="tab">
+    <h2>Release Notes <span id="rel-ver" style="font-weight:normal;font-size:13px;color:#6b5560"></span></h2>
+    <div id="rel-body"></div>
   </section>
 </main>
 

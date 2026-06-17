@@ -41,12 +41,17 @@ def _host_of(url: str) -> str:
 class _Handler(BaseHTTPRequestHandler):
     server_version = "secure-mcp-edge"
 
+    def _emit_headers(self) -> None:
+        for k, v in _HEADERS.items():
+            self.send_header(k, v)
+        if getattr(self.server, "cfg", None) is not None and self.server.cfg.tls_enabled:
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
     def _json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        for k, v in _HEADERS.items():
-            self.send_header(k, v)
+        self._emit_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -98,8 +103,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
             self.send_header("ETag", etag)
-            for k, v in _HEADERS.items():
-                self.send_header(k, v)
+            self._emit_headers()
             self.end_headers()
             return
         envelope = self.server.policy.sign(doc)
@@ -109,8 +113,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("ETag", etag)
-        for k, v in _HEADERS.items():
-            self.send_header(k, v)
+        self._emit_headers()
         self.end_headers()
         self.wfile.write(body)
 

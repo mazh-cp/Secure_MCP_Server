@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Loads edge PDP secrets from Vault into env, then execs the entrypoint.
+# Usage: edge-env-load.sh <entrypoint> [args...]
+# Copy to edge-env-load.sh, edit the Vault paths, chmod 0750.
+
+set -euo pipefail
+[[ $# -ge 1 ]] || { echo "usage: $0 <entrypoint> [args...]" >&2; exit 64; }
+ENTRYPOINT="$1"; shift
+
+# --- secrets from Vault ---
+export SECURE_MCP_EDGE_ENROLLMENT_SECRET="$(vault kv get -field=secret secret/secure-mcp/edge-enrollment)"
+export CHECKPOINT_TC_API_KEY="$(vault kv get -field=api_key secret/secure-mcp/threatcloud)"
+export SECURE_MCP_AUDIT_HMAC_KEY="$(vault kv get -field=hmac_key secret/secure-mcp/audit 2>/dev/null || true)"
+
+# --- non-secret config ---
+export SECURE_MCP_EDGE_HOST="${SECURE_MCP_EDGE_HOST:-0.0.0.0}"
+export SECURE_MCP_EDGE_PORT="${SECURE_MCP_EDGE_PORT:-8770}"
+export SECURE_MCP_EDGE_TLS_CERT="${SECURE_MCP_EDGE_TLS_CERT:-/etc/secure-mcp/tls/edge.crt}"
+export SECURE_MCP_EDGE_TLS_KEY="${SECURE_MCP_EDGE_TLS_KEY:-/etc/secure-mcp/tls/edge.key}"
+export CHECKPOINT_TC_BASE_URL="${CHECKPOINT_TC_BASE_URL:-https://rep.checkpoint.com}"
+export SECURE_MCP_AUDIT_LOG_PATH="${SECURE_MCP_AUDIT_LOG_PATH:-/var/log/secure-mcp/audit.jsonl}"
+export SECURE_MCP_EDGE_AUDIT_LOG="${SECURE_MCP_EDGE_AUDIT_LOG:-/var/log/secure-mcp/edge-audit.jsonl}"
+export SECURE_MCP_EDGE_POLICY_DIR="${SECURE_MCP_EDGE_POLICY_DIR:-/etc/secure-mcp/policies}"
+export SECURE_MCP_EDGE_KEYS_DIR="${SECURE_MCP_EDGE_KEYS_DIR:-/etc/secure-mcp/keys}"
+export SECURE_MCP_EDGE_GROUPS="${SECURE_MCP_EDGE_GROUPS:-}"
+
+[[ -n "$SECURE_MCP_EDGE_ENROLLMENT_SECRET" ]] || { echo "enrollment secret empty" >&2; exit 1; }
+[[ -n "$CHECKPOINT_TC_API_KEY" ]] || { echo "ThreatCloud key empty" >&2; exit 1; }
+
+exec "$ENTRYPOINT" "$@"

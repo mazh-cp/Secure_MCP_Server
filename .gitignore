@@ -9,6 +9,7 @@ __pycache__/
 *.key
 *.crt
 secrets/
+*.enc
 identity.json
 build/
 dist/

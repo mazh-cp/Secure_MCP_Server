@@ -1,0 +1,86 @@
+# Host the secure-mcp network services on a VM / server.
+#
+#   edge  : internet-facing Policy Decision Point (browser plugins) — expose 443/8770
+#   admin : management console — keep INTERNAL (admin subnet / VPN), never public
+#
+# Secrets come from the environment (a gitignored .env, or exported from Vault
+# before `docker compose up`). The `${VAR:?...}` form fails closed if missing.
+# TLS certs are mounted from ./tls (run gen-dev-certs.sh for local; use real
+# certs / a fronting Caddy+LetsEncrypt for the public edge in production).
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  edge:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["secure-mcp-edge"]
+    <<: *hardening
+    environment:
+      SECURE_MCP_EDGE_HOST: "0.0.0.0"
+      SECURE_MCP_EDGE_PORT: "8770"
+      SECURE_MCP_EDGE_TLS_CERT: /tls/edge.crt
+      SECURE_MCP_EDGE_TLS_KEY: /tls/edge.key
+      CHECKPOINT_TC_BASE_URL: ${CHECKPOINT_TC_BASE_URL:-https://rep.checkpoint.com}
+      SECURE_MCP_AUDIT_LOG_PATH: /var/log/secure-mcp/audit.jsonl
+      SECURE_MCP_EDGE_AUDIT_LOG: /var/log/secure-mcp/edge-audit.jsonl
+      SECURE_MCP_EDGE_POLICY_DIR: /etc/secure-mcp/policies
+      SECURE_MCP_EDGE_KEYS_DIR: /etc/secure-mcp/keys
+      SECURE_MCP_EDGE_GROUPS: ${SECURE_MCP_EDGE_GROUPS:-}
+      # --- secrets (inject from Vault/KMS; never commit) ---
+      SECURE_MCP_EDGE_ENROLLMENT_SECRET: ${SECURE_MCP_EDGE_ENROLLMENT_SECRET:?set in .env or export from Vault}
+      CHECKPOINT_TC_API_KEY: ${CHECKPOINT_TC_API_KEY:?set in .env or export from Vault}
+      SECURE_MCP_AUDIT_HMAC_KEY: ${SECURE_MCP_AUDIT_HMAC_KEY:?set in .env or export from Vault}
+    volumes:
+      - state:/etc/secure-mcp
+      - logs:/var/log/secure-mcp
+      - ./tls:/tls:ro
+    ports:
+      - "${EDGE_PUBLISH_ADDR:-0.0.0.0}:8770:8770"
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["secure-mcp-admin"]
+    <<: *hardening
+    environment:
+      SECURE_MCP_ADMIN_HOST: "0.0.0.0"
+      SECURE_MCP_ADMIN_PORT: "8765"
+      SECURE_MCP_ADMIN_TLS_CERT: /tls/admin.crt
+      SECURE_MCP_ADMIN_TLS_KEY: /tls/admin.key
+      SECURE_MCP_IDENTITY_DIR: /etc/secure-mcp/identities
+      SECURE_MCP_CONFIG_FILE: /etc/secure-mcp/config.json
+      SECURE_MCP_AUDIT_LOG_PATH: /var/log/secure-mcp/audit.jsonl
+      SECURE_MCP_ADMIN_AUDIT_LOG: /var/log/secure-mcp/admin-audit.jsonl
+      SECURE_MCP_EDGE_POLICY_DIR: /etc/secure-mcp/policies
+      SECURE_MCP_EDGE_KEYS_DIR: /etc/secure-mcp/keys
+      SECURE_MCP_KEYSTORE_PATH: /etc/secure-mcp/secrets.enc
+      CHECKPOINT_TE_BASE_URL: ${CHECKPOINT_TE_BASE_URL:-https://te.checkpoint.com}
+      CHECKPOINT_TC_BASE_URL: ${CHECKPOINT_TC_BASE_URL:-https://rep.checkpoint.com}
+      LAKERA_GUARD_BASE_URL: ${LAKERA_GUARD_BASE_URL:-https://api.lakera.ai}
+      # --- secrets (inject from Vault/KMS; never commit) ---
+      SECURE_MCP_ADMIN_TOKEN: ${SECURE_MCP_ADMIN_TOKEN:?set in .env or export from Vault}
+      SECURE_MCP_AUDIT_HMAC_KEY: ${SECURE_MCP_AUDIT_HMAC_KEY:?set in .env or export from Vault}
+      # Enables the Keys & Secrets tab (AES-256-GCM keystore). Omit to manage via env/Vault only.
+      SECURE_MCP_KEYSTORE_MASTER_KEY: ${SECURE_MCP_KEYSTORE_MASTER_KEY:-}
+    volumes:
+      - state:/etc/secure-mcp
+      - logs:/var/log/secure-mcp
+      - ./tls:/tls:ro
+    # Bind admin to LOOPBACK on the host by default — reach it via SSH tunnel or
+    # an internal reverse proxy. Override ADMIN_PUBLISH_ADDR only on a trusted net.
+    ports:
+      - "${ADMIN_PUBLISH_ADDR:-127.0.0.1}:8765:8765"
+
+volumes:
+  state:   # /etc/secure-mcp — identities, policies, signing keys, secrets.enc, config.json
+  logs:    # /var/log/secure-mcp — tamper-evident audit logs (back up; encrypt the volume)

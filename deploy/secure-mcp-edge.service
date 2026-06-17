@@ -1,0 +1,53 @@
+# systemd unit for the internet-facing edge PDP (browser policy decisions).
+# Install as /etc/systemd/system/secure-mcp-edge.service.
+#
+# TLS is REQUIRED (the service refuses a non-loopback bind without it). Either
+# set SECURE_MCP_EDGE_TLS_CERT/KEY here, or terminate TLS at a fronting reverse
+# proxy (Caddy/nginx + Let's Encrypt) and bind the service to 127.0.0.1.
+
+[Unit]
+Description=Secure MCP edge PDP (URL verdicts + signed policy for browsers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=secure-mcp
+Group=secure-mcp
+WorkingDirectory=/opt/secure-mcp
+
+# Wrapper loads SECURE_MCP_EDGE_ENROLLMENT_SECRET, CHECKPOINT_TC_API_KEY and
+# SECURE_MCP_AUDIT_HMAC_KEY from Vault into env, then execs the entrypoint.
+ExecStart=/opt/secure-mcp/deploy/edge-env-load.sh /opt/secure-mcp/.venv/bin/secure-mcp-edge
+
+Restart=on-failure
+RestartSec=5s
+
+# --- Hardening ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Writes the edge audit log; reads signed-policy dir + signing keys.
+ReadWritePaths=/var/log/secure-mcp /etc/secure-mcp
+
+# NOTE: unlike the broker/admin units, do NOT IPAddressDeny private ranges here —
+# the edge legitimately serves browser clients on internal networks. Restrict
+# OUTBOUND egress (to rep.checkpoint.com) and inbound exposure at the host/cloud
+# firewall instead.
+
+[Install]
+WantedBy=multi-user.target

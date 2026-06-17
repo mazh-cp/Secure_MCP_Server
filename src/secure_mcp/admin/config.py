@@ -50,10 +50,17 @@ class AdminConfig:
     restart_use_sudo: bool = False
     policy_dir: Path = Path("/etc/secure-mcp/policies")
     keys_dir: Path = Path("/etc/secure-mcp/keys")
+    keystore_path: Path = Path("/etc/secure-mcp/secrets.enc")
+    keystore_master_key: bytes | None = None
 
     @property
     def tls_enabled(self) -> bool:
         return bool(self.tls_cert and self.tls_key)
+
+
+def _load_keystore_master_key() -> bytes | None:
+    from ..keystore import load_master_key
+    return load_master_key()
 
 
 def _load_hmac_key() -> bytes | None:
@@ -118,4 +125,6 @@ def load_admin_config() -> AdminConfig:
         in {"1", "true", "yes"},
         policy_dir=Path(os.environ.get("SECURE_MCP_EDGE_POLICY_DIR", "/etc/secure-mcp/policies")),
         keys_dir=Path(os.environ.get("SECURE_MCP_EDGE_KEYS_DIR", "/etc/secure-mcp/keys")),
+        keystore_path=Path(os.environ.get("SECURE_MCP_KEYSTORE_PATH", "/etc/secure-mcp/secrets.enc")),
+        keystore_master_key=_load_keystore_master_key(),
     )

@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from ..audit import AuditLogger, verify_chain
+from ..keystore import SECRET_CATALOG, SecretKeystore, fingerprint
 from ..policy_store import PolicyStore
 from ..scopes import ALL_SCOPES
 from .config import AdminConfig
@@ -49,6 +50,8 @@ class AdminService:
         self._restart = RestartManager(cfg.managed_units, use_sudo=cfg.restart_use_sudo,
                                        runner=restart_runner, audit=self._audit)
         self._policy = PolicyStore(cfg.policy_dir, cfg.keys_dir)
+        self._keystore = (SecretKeystore(cfg.keystore_path, cfg.keystore_master_key)
+                          if cfg.keystore_master_key else None)
 
     # ---- identity management (persistent; applied on MCP server restart) ----
 
@@ -287,6 +290,80 @@ class AdminService:
             tips.append({"level": "ok", "title": "No issues detected",
                          "detail": "Audit chain intact, DLP active, scopes look reasonable."})
         return tips
+
+    # ---- secrets / keys management (write-only; values never returned) ----
+
+    def list_secrets(self) -> dict[str, Any]:
+        """Status only — present/source/fingerprint per catalog entry. Never a value."""
+        ks_status = self._keystore.status() if self._keystore else {}
+        rows = []
+        for name, meta in SECRET_CATALOG.items():
+            env_val = os.environ.get(meta["env"], "")
+            env_present = bool(env_val) and not env_val.startswith("__")
+            if env_present:
+                rows.append({"name": name, "label": meta["label"], "present": True,
+                             "source": "env", "fingerprint": fingerprint(env_val),
+                             "updated": None, "testable": meta["testable"]})
+            elif name in ks_status:
+                rows.append({"name": name, "label": meta["label"], "present": True,
+                             "source": "keystore", "fingerprint": ks_status[name]["fp"],
+                             "updated": ks_status[name].get("updated"), "testable": meta["testable"]})
+            else:
+                rows.append({"name": name, "label": meta["label"], "present": False,
+                             "source": None, "fingerprint": None, "updated": None,
+                             "testable": meta["testable"]})
+        return {"keystore_enabled": self._keystore is not None, "secrets": rows}
+
+    def set_secret(self, name: str, value: str) -> dict[str, Any]:
+        if name not in SECRET_CATALOG:
+            raise AdminValidationError(f"unknown secret '{name}'")
+        if self._keystore is None:
+            raise AdminValidationError(
+                "keystore not configured — secrets are managed via env/Vault. "
+                "Set SECURE_MCP_KEYSTORE_MASTER_KEY to enable in-console provisioning.")
+        if not isinstance(value, str) or not value.strip():
+            raise AdminValidationError("secret value required")
+        fp = self._keystore.set(name, value, now_iso=datetime.now(timezone.utc).isoformat())
+        # Audit records the fingerprint, NEVER the value.
+        self._audit.record(tool="admin", action="set_secret", result="ok",
+                           details={"name": name, "fingerprint": fp})
+        return {"name": name, "present": True, "source": "keystore", "fingerprint": fp}
+
+    def delete_secret(self, name: str) -> dict[str, Any]:
+        if name not in SECRET_CATALOG:
+            raise AdminValidationError(f"unknown secret '{name}'")
+        if self._keystore is None:
+            raise AdminValidationError("keystore not configured")
+        existed = self._keystore.delete(name)
+        self._audit.record(tool="admin", action="delete_secret", result="ok",
+                           details={"name": name, "existed": existed})
+        return {"name": name, "deleted": existed}
+
+    def test_secret(self, name: str) -> dict[str, Any]:
+        """Live connectivity probe for an upstream key. Resolves the value
+        internally, sends it only to its own upstream, and returns reachability
+        — never the value."""
+        meta = SECRET_CATALOG.get(name)
+        if not meta or not meta["testable"]:
+            raise AdminValidationError(f"secret '{name}' is not testable")
+        value = os.environ.get(meta["env"]) or (self._keystore.get(name) if self._keystore else None)
+        if not value or value.startswith("__"):
+            return {"name": name, "configured": False}
+        targets = {
+            "checkpoint_te": (self.cfg.te_base_url, {"Authorization": value}),
+            "checkpoint_tc": (self.cfg.tc_base_url, {"Authorization": value}),
+            "lakera_guard": (self.cfg.lakera_base_url, {"Authorization": f"Bearer {value}"}),
+        }
+        base, headers = targets[name]
+        try:
+            with httpx.Client(timeout=5.0, verify=True, follow_redirects=False) as c:
+                r = c.get(base, headers=headers)
+            result = {"name": name, "configured": True, "reachable": True, "status": r.status_code}
+        except Exception as e:  # noqa: BLE001
+            result = {"name": name, "configured": True, "reachable": False, "error": type(e).__name__}
+        self._audit.record(tool="admin", action="test_secret", result="ok",
+                           details={"name": name, "reachable": result.get("reachable")})
+        return result
 
     def close(self) -> None:
         self._audit.close()

@@ -36,6 +36,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         for k, v in _SECURITY_HEADERS.items():
             self.send_header(k, v)
+        if getattr(self.server, "cfg", None) is not None and self.server.cfg.tls_enabled:
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         self.end_headers()
 
     def _json(self, status: int, payload: dict) -> None:
@@ -168,6 +170,22 @@ class _Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/policies/") and method == "GET":
             group = unquote(path[len("/api/policies/"):])
             return self._json(200, svc.get_browser_policy(group))
+        if path == "/api/about" and method == "GET":
+            from ..release import about
+            return self._json(200, about())
+        if path == "/api/secrets":
+            if method == "GET":
+                return self._json(200, svc.list_secrets())
+            if method == "PUT":
+                b = self._read_json()
+                # The value is consumed write-only; the response carries no value.
+                return self._json(200, svc.set_secret(str(b.get("name", "")), str(b.get("value", ""))))
+        if path.startswith("/api/secrets/") and path.endswith("/test") and method == "POST":
+            name = unquote(path[len("/api/secrets/"):-len("/test")])
+            return self._json(200, svc.test_secret(name))
+        if path.startswith("/api/secrets/") and method == "DELETE":
+            name = unquote(path[len("/api/secrets/"):])
+            return self._json(200, svc.delete_secret(name))
         self._json(404, {"error": "not found"})
 
 

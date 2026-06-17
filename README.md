@@ -90,6 +90,17 @@ SECURE_MCP_ADMIN_TOKEN=... SECURE_MCP_IDENTITY_DIR=... secure-mcp-admin
 # → http://127.0.0.1:8765
 ```
 
+## MCP Guard (the differentiator — policy plane for agent tool-calls)
+
+`secure-mcp-guard` is the control plane *in front of* other MCP servers: every
+agent tool-call runs authz → quota → rate → **outbound-arg DLP** → forward →
+**tool-poisoning / prompt-injection + DLP screen on the response** → tamper-evident
+audit, and every tool descriptor is screened for poisoning at registration. The
+two `screen_tool` / `screen_response` tools work standalone today. This is the
+layer browser-bound competitors can't reach — see
+[docs/MCP-GUARD.md](docs/MCP-GUARD.md) and
+[docs/COMPETITIVE-STRATEGY.md](docs/COMPETITIVE-STRATEGY.md).
+
 ## Edge PDP (browser policy enforcement over the internet)
 
 `secure-mcp-edge` is an internet-facing **Policy Decision Point** for browser
@@ -111,6 +122,28 @@ Ed25519-signed envelope (`GET /edge/v1/policy`, ETag-polled) with telemetry
 (`POST /edge/v1/events`) flowing into the tamper-evident audit log. The plugin
 verifies the signature with WebCrypto before applying. Devices poll — no MCP
 restart needed for policy changes.
+
+## Local validation
+
+```bash
+.venv/bin/python scripts/validate_local.py   # 22-check end-to-end report (no real keys)
+.venv/bin/python scripts/run_local.py        # interactive admin+edge for browser/plugin
+```
+
+See [docs/LOCAL-VALIDATION.md](docs/LOCAL-VALIDATION.md).
+
+## Deploy on a VM / server
+
+Host the **edge PDP** (internet-facing) and **admin console** (internal) via
+Docker Compose or systemd — secrets injected at runtime, TLS enforced. The
+broker/guard are stdio (client-side), not server-hosted.
+
+```bash
+cd deploy/docker && ./gen-dev-certs.sh && cp .env.example .env   # fill secrets
+docker compose up -d --build      # edge :8770 (public), admin 127.0.0.1:8765 (tunnel)
+```
+
+Full runbook (Docker + systemd, TLS, firewall/egress, secrets): [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Quickstart
 

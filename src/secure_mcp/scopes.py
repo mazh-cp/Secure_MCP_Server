@@ -10,6 +10,9 @@ ALL_SCOPES: frozenset[str] = frozenset({
     "threat_intel",
     "url_category",
     "anti_phishing",
+    # Guard gateway: a client allowed to route tool calls through the
+    # policy-enforcing MCP proxy.
+    "mcp_proxy",
 })
 
 # Scopes that route indicators to ThreatCloud (require CHECKPOINT_TC_API_KEY).

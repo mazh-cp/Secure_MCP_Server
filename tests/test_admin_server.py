@@ -28,6 +28,8 @@ def _cfg(tmp_path: Path, managed_units=()) -> AdminConfig:
         managed_units=managed_units,
         policy_dir=tmp_path / "policies",
         keys_dir=tmp_path / "keys",
+        keystore_path=tmp_path / "secrets.enc",
+        keystore_master_key=bytes(range(32)),
     )
 
 
@@ -155,6 +157,36 @@ def test_restart_disabled_when_no_units(server):
     s = _login(server)
     r = httpx.get(f"{server}/api/restart", headers={"Authorization": f"Bearer {s}"})
     assert r.status_code == 200 and r.json()["enabled"] is False
+
+
+def test_secrets_write_only_via_api(server):
+    h = {"Authorization": f"Bearer {_login(server)}"}
+    r = httpx.put(f"{server}/api/secrets", headers=h,
+                  json={"name": "checkpoint_te", "value": "TOP-SECRET-KEY"})
+    assert r.status_code == 200
+    assert "TOP-SECRET-KEY" not in r.text          # value never echoed back
+    r = httpx.get(f"{server}/api/secrets", headers=h)
+    assert "TOP-SECRET-KEY" not in r.text          # never in status listing
+    assert any(s["name"] == "checkpoint_te" and s["present"] for s in r.json()["secrets"])
+    # unknown secret → 400
+    r = httpx.put(f"{server}/api/secrets", headers=h, json={"name": "bogus", "value": "x"})
+    assert r.status_code == 400
+
+
+def test_about_endpoint(server):
+    h = {"Authorization": f"Bearer {_login(server)}"}
+    r = httpx.get(f"{server}/api/about", headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["version"]
+    assert isinstance(body["readme"], list) and body["readme"]
+    assert isinstance(body["release_notes"], list) and body["release_notes"][0]["version"]
+
+
+def test_no_hsts_without_tls(server):
+    # The test server is plain HTTP → HSTS must NOT be emitted (it's TLS-gated).
+    r = httpx.get(f"{server}/")
+    assert "Strict-Transport-Security" not in r.headers
 
 
 def test_browser_policy_via_api(server):

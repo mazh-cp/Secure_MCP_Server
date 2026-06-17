@@ -101,14 +101,43 @@ def _load_op_overrides() -> dict:
     return {k: v for k, v in data.items() if k in allowed}
 
 
+def _load_keystore():
+    """Optional encrypted keystore (local provisioning). None when no master key
+    is configured — then secrets come from env/Vault only."""
+    from .keystore import SecretKeystore, load_master_key
+    mk = load_master_key()
+    if not mk:
+        return None
+    path = os.environ.get("SECURE_MCP_KEYSTORE_PATH", "/etc/secure-mcp/secrets.enc")
+    return SecretKeystore(Path(path), mk)
+
+
+def _resolve_secret(name: str, env_name: str, ks) -> str | None:
+    """Precedence: env var (Vault-injected) > encrypted keystore."""
+    val = os.environ.get(env_name)
+    if val and not val.startswith("__"):
+        return val
+    if ks is not None:
+        return ks.get(name)
+    return None
+
+
+def _require_secret(name: str, env_name: str, ks) -> str:
+    v = _resolve_secret(name, env_name, ks)
+    if not v:
+        raise ConfigError(f"secret '{name}' not found in env ({env_name}) or keystore")
+    return v
+
+
 def load_settings() -> Settings:
-    """Load settings from environment. Real keys MUST be injected by the
-    secrets manager (Vault / KMS) into env at process start — never hardcoded."""
+    """Load settings from environment, with an optional encrypted keystore
+    fallback for upstream API keys. Keys are never hardcoded — they come from
+    the secrets manager (env/Vault) or the AES-256-GCM keystore."""
     identity = _load_identity(_require_env("SECURE_MCP_IDENTITY_FILE"))
+    ks = _load_keystore()
     # ThreatCloud key is optional: only required if a threat_intel/url_category/
-    # anti_phishing scope is granted. Validated at adapter use, not here, so a
-    # TE-only or ai_guard-only deployment doesn't need it.
-    tc_key = os.environ.get("CHECKPOINT_TC_API_KEY", "")
+    # anti_phishing scope is granted (checked in build_server).
+    tc_key = _resolve_secret("checkpoint_tc", "CHECKPOINT_TC_API_KEY", ks) or ""
     op = _load_op_overrides()
     return Settings(
         identity=identity,
@@ -116,12 +145,12 @@ def load_settings() -> Settings:
             os.environ.get("CHECKPOINT_TE_BASE_URL", "https://te.checkpoint.com"),
             "CHECKPOINT_TE_BASE_URL",
         ),
-        checkpoint_te_api_key=_require_env("CHECKPOINT_TE_API_KEY"),
+        checkpoint_te_api_key=_require_secret("checkpoint_te", "CHECKPOINT_TE_API_KEY", ks),
         lakera_guard_base_url=_require_https(
             os.environ.get("LAKERA_GUARD_BASE_URL", "https://api.lakera.ai"),
             "LAKERA_GUARD_BASE_URL",
         ),
-        lakera_guard_api_key=_require_env("LAKERA_GUARD_API_KEY"),
+        lakera_guard_api_key=_require_secret("lakera_guard", "LAKERA_GUARD_API_KEY", ks),
         audit_log_path=Path(_require_env("SECURE_MCP_AUDIT_LOG_PATH")),
         upload_dir=Path(_require_env("SECURE_MCP_UPLOAD_DIR")),
         max_upload_bytes=int(os.environ.get("SECURE_MCP_MAX_UPLOAD_BYTES", "33554432")),
