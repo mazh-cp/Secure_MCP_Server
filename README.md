@@ -154,7 +154,7 @@ See [docs/ADMIN.md](docs/ADMIN.md) for ongoing operations, and
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                  # 177 tests
+pytest                  # 225 tests
 ```
 
 ## Upstream API caveats
