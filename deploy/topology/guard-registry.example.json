@@ -1,0 +1,52 @@
+{
+  "_comment": "v0.8 guard-first registry. Complementary official Check Point MCPs only — NO threat-emulation or reputation-service (those stay on secure-mcp broker). Secrets via ${ENV} expansion; never commit real keys. See docs/ARCHITECTURE.md and https://github.com/CheckPointSW/mcp-servers",
+  "chkp-management": {
+    "command": "npx",
+    "args": ["-y", "@chkp/quantum-management-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  },
+  "chkp-threat-prevention": {
+    "command": "npx",
+    "args": ["-y", "@chkp/threat-prevention-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  },
+  "chkp-harmony-sase": {
+    "command": "npx",
+    "args": ["-y", "@chkp/harmony-sase-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  },
+  "chkp-https-inspection": {
+    "command": "npx",
+    "args": ["-y", "@chkp/https-inspection-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  },
+  "chkp-management-logs": {
+    "command": "npx",
+    "args": ["-y", "@chkp/management-logs-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  },
+  "chkp-waf": {
+    "command": "npx",
+    "args": ["-y", "@chkp/checkpoint-waf-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  },
+  "chkp-policy-insights": {
+    "command": "npx",
+    "args": ["-y", "@chkp/policy-insights-mcp"],
+    "env": {
+      "TELEMETRY_DISABLED": "true"
+    }
+  }
+}

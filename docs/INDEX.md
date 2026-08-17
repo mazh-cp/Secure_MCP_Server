@@ -23,6 +23,9 @@ Start here, then jump to the doc for your task.
   or systemd, TLS, firewall/egress, secrets injection, persistence.
 
 ## Architecture & integration
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — **v0.8 guard-first topology**: Cursor →
+  `secure-mcp-guard` → complementary official `@chkp/*` MCP servers; broker owns
+  TE/ThreatCloud/Lakera (no double exposure).
 - **[EDGE-INTEGRATION.md](EDGE-INTEGRATION.md)** — browser plugin ⇄ secure-mcp as
   a centralized PDP: enrollment, indicator-only URL verdicts, Ed25519-signed
   policy, telemetry → audit (Phases 1–2 built).

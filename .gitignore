@@ -19,4 +19,5 @@ dist/
 .claudepreview/
 .dev-audit.jsonl
 .dev-uploads/
+.topology/
 docs/console-preview.html

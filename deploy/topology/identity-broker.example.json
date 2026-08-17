@@ -1,12 +1,11 @@
 {
-  "caller_id": "example-client",
+  "caller_id": "cursor-broker",
   "allowed_tools": [
     "threat_emulation",
     "file_sandboxing",
     "ai_guard",
     "threat_intel",
     "url_category",
-    "anti_phishing",
-    "mcp_proxy"
+    "anti_phishing"
   ]
 }

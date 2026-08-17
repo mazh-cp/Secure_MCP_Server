@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0] - 2026-08-17
+
+### Guard-first topology + official Check Point MCP integration
+
+- Reference architecture: Cursor → `secure-mcp-guard` → complementary `@chkp/*` servers from [CheckPointSW/mcp-servers](https://github.com/CheckPointSW/mcp-servers); TE/reputation stay on the broker (no double exposure).
+- Guard registry `${VAR}` expansion and parent-env merge for `npx` upstreams.
+- Guard-only identities (`mcp_proxy`) no longer require TE/Lakera API keys.
+- Templates: `deploy/topology/*`, `scripts/materialize_topology.py`, `docs/ARCHITECTURE.md`.
+
 ## [0.7.0] - 2026-06-15
 
 ### Live MCP forwarder + cross-browser packaging

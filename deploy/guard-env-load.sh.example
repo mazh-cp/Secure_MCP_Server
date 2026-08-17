@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Launcher for secure-mcp-guard: inject secrets then exec the guard.
+# Usage: ./guard-env-load.sh /path/to/.venv/bin/secure-mcp-guard
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export SECURE_MCP_IDENTITY_FILE="${SECURE_MCP_IDENTITY_FILE:-$ROOT/deploy/topology/identity-guard.example.json}"
+export SECURE_MCP_GUARD_REGISTRY="${SECURE_MCP_GUARD_REGISTRY:-$ROOT/deploy/topology/guard-registry.example.json}"
+export SECURE_MCP_AUDIT_LOG_PATH="${SECURE_MCP_AUDIT_LOG_PATH:-$ROOT/.topology/guard-audit.jsonl}"
+export SECURE_MCP_UPLOAD_DIR="${SECURE_MCP_UPLOAD_DIR:-$ROOT/.topology/uploads}"
+export SECURE_MCP_DLP_MODE="${SECURE_MCP_DLP_MODE:-redact}"
+export TELEMETRY_DISABLED="${TELEMETRY_DISABLED:-true}"
+
+mkdir -p "$(dirname "$SECURE_MCP_AUDIT_LOG_PATH")" "$SECURE_MCP_UPLOAD_DIR"
+
+# Optional: source Vault / 1Password / cloud-secret export here before exec.
+# Example: eval "$(vault-agent env -format=exports)"
+
+exec "$@"

@@ -1,6 +1,6 @@
 [project]
 name = "secure-mcp"
-version = "0.7.0"
+version = "0.8.0"
 description = "Hardened MCP broker for Check Point Threat Emulation and Lakera Guard."
 requires-python = ">=3.11"
 dependencies = [

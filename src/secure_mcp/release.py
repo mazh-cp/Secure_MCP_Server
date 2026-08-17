@@ -60,6 +60,16 @@ CONSOLE_README: list[dict[str, str]] = [
 # Newest first. Each entry: version, date (ISO), title, changes[].
 RELEASE_NOTES: list[dict] = [
     {
+        "version": "0.8.0", "date": "2026-08-17", "title": "Guard-first topology + official CP MCP integration",
+        "changes": [
+            "Reference architecture for Cursor → secure-mcp-guard → complementary "
+            "@chkp/* servers (CheckPointSW/mcp-servers) without TE/reputation overlap.",
+            "Guard registry ${VAR} env expansion + parent-env merge for npx upstreams.",
+            "Guard-only identities (mcp_proxy) no longer require TE/Lakera API keys.",
+            "deploy/topology templates + materialize_topology.py for Cursor mcp.json.",
+        ],
+    },
+    {
         "version": "0.7.0", "date": "2026-06-15", "title": "Live MCP forwarder + cross-browser packaging",
         "changes": [
             "MCP guard proxies real upstream MCP servers (stdio client bridged into the "

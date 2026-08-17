@@ -85,10 +85,18 @@ registry JSON at `SECURE_MCP_GUARD_REGISTRY`:
 ```
 
 Transports: **stdio** (spawn `command`/`args`), **streamable-http** (default for a
-`url`), and **sse** (legacy). HTTP/SSE upstreams must be **https** unless loopback
-(fail-closed TLS), and may carry auth `headers` (never logged). Only servers in
-the registry can be reached; every listed descriptor is screened for poisoning
-and every call goes through the gate. With no registry set, the two `screen_*`
-tools still work standalone. Verified end-to-end against real subprocess
-upstreams (stdio + Streamable-HTTP) in `tests/test_mcpguard_forwarder.py` and
-`tests/test_mcpguard_http.py`.
+`url`), and **sse** (legacy). Registry `env` / `headers` values support `${VAR}`
+expansion from the guard process environment; stdio `env` is merged with the
+parent environment so `npx` keeps `PATH`. HTTP/SSE upstreams must be **https**
+unless loopback (fail-closed TLS), and may carry auth `headers` (never logged).
+Only servers in the registry can be reached; every listed descriptor is screened
+for poisoning and every call goes through the gate. With no registry set, the
+two `screen_*` tools still work standalone.
+
+**v0.8 topology:** register complementary official packages from
+[CheckPointSW/mcp-servers](https://github.com/CheckPointSW/mcp-servers)
+(`@chkp/quantum-management-mcp`, threat-prevention, harmony-sase, …). Keep TE and
+reputation on `secure-mcp` — see [ARCHITECTURE.md](ARCHITECTURE.md) and
+`deploy/topology/guard-registry.example.json`. Verified end-to-end against real
+subprocess upstreams (stdio + Streamable-HTTP) in `tests/test_mcpguard_forwarder.py`
+and `tests/test_mcpguard_http.py`.

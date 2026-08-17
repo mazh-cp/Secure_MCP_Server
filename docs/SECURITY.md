@@ -64,7 +64,7 @@ and DLP-screened text only; never raw customer files to non-approved sinks.
 | 3 | Login throttle is per-source-IP, in-memory | Medium (proxied) | **Documented** — behind a reverse proxy all clients share the proxy IP, making lockout global. Keep admin loopback/VPN-only (default) or rate-limit at the proxy; do not blindly trust `X-Forwarded-For` |
 | 4 | Throttle/session state resets on restart | Low | **Accepted** — fine for a single instance; use a shared store if scaled horizontally |
 | 5 | Session security depends on admin-token strength | — | **By design** — the admin token must be high-entropy and Vault-injected (the session signing key is derived from it) |
-| 6 | MCP guard forwarder is unwired | Info | **Not a vuln** — the gate + screening are active; only the upstream transport is pending |
+| 6 | MCP guard forwarder live; v0.8 guard-first topology | Info | **Shipped** — registry + `@chkp/*` complementary upstreams; see ARCHITECTURE.md |
 
 No high/critical findings. Strengths: no-CSRF design, write-only secrets,
 tamper-evident audit, fail-closed config, broad input validation + SSRF guards.

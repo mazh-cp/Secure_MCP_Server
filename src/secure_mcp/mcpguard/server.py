@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -20,6 +21,32 @@ from .proxy import SCOPE, MCPGuard
 
 _log = get_logger("secure_mcp.guard")
 
+_ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _expand_env_value(value: str) -> str:
+    """Expand ${VAR} placeholders from the process environment."""
+    def repl(m: re.Match[str]) -> str:
+        return os.environ.get(m.group(1), "")
+    return _ENV_REF.sub(repl, value)
+
+
+def _prepare_registry(data: dict) -> dict:
+    """Expand env placeholders and merge stdio env with the parent environment
+    so upstream @chkp/* processes inherit PATH/HOME while receiving API keys."""
+    out: dict[str, Any] = {}
+    for name, spec in data.items():
+        if not isinstance(spec, dict):
+            continue
+        entry = dict(spec)
+        if "env" in entry and isinstance(entry["env"], dict):
+            expanded = {k: _expand_env_value(str(v)) for k, v in entry["env"].items()}
+            entry["env"] = {**os.environ, **expanded}
+        if "headers" in entry and isinstance(entry["headers"], dict):
+            entry["headers"] = {k: _expand_env_value(str(v)) for k, v in entry["headers"].items()}
+        out[name] = entry
+    return out
+
 
 def _load_registry() -> dict | None:
     """Upstream MCP servers the guard may proxy. JSON file at
@@ -29,7 +56,9 @@ def _load_registry() -> dict | None:
         return None
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    return data if isinstance(data, dict) and data else None
+    if not isinstance(data, dict) or not data:
+        return None
+    return _prepare_registry(data)
 
 
 class _UnwiredForwarder:

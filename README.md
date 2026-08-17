@@ -92,14 +92,20 @@ SECURE_MCP_ADMIN_TOKEN=... SECURE_MCP_IDENTITY_DIR=... secure-mcp-admin
 
 ## MCP Guard (the differentiator — policy plane for agent tool-calls)
 
-`secure-mcp-guard` is the control plane *in front of* other MCP servers: every
-agent tool-call runs authz → quota → rate → **outbound-arg DLP** → forward →
-**tool-poisoning / prompt-injection + DLP screen on the response** → tamper-evident
-audit, and every tool descriptor is screened for poisoning at registration. The
-two `screen_tool` / `screen_response` tools work standalone today. This is the
-layer browser-bound competitors can't reach — see
-[docs/MCP-GUARD.md](docs/MCP-GUARD.md) and
-[docs/COMPETITIVE-STRATEGY.md](docs/COMPETITIVE-STRATEGY.md).
+`secure-mcp-guard` is the control plane *in front of* other MCP servers — including
+[official Check Point MCP packages](https://github.com/CheckPointSW/mcp-servers)
+(`@chkp/*`). Every agent tool-call runs authz → quota → rate → **outbound-arg DLP** →
+forward → **tool-poisoning / prompt-injection + DLP screen on the response** →
+tamper-evident audit. **v0.8** ships a guard-first Cursor topology that registers
+*complementary* official servers (management, SASE, …) and keeps TE/reputation on
+the broker only — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+```bash
+.venv/bin/python scripts/materialize_topology.py --write-cursor-mcp
+# Reload MCP in Cursor → use guard_list_tools / guard_call
+```
+
+Also: [docs/MCP-GUARD.md](docs/MCP-GUARD.md), [docs/COMPETITIVE-STRATEGY.md](docs/COMPETITIVE-STRATEGY.md).
 
 ## Edge PDP (browser policy enforcement over the internet)
 
@@ -154,7 +160,7 @@ See [docs/ADMIN.md](docs/ADMIN.md) for ongoing operations, and
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                  # 225 tests
+pytest                  # 229+ tests
 ```
 
 ## Upstream API caveats

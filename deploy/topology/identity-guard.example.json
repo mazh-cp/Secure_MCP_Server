@@ -1,0 +1,6 @@
+{
+  "caller_id": "cursor-guard",
+  "allowed_tools": [
+    "mcp_proxy"
+  ]
+}

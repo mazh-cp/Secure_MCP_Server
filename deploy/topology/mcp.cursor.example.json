@@ -1,0 +1,40 @@
+{
+  "mcpServers": {
+    "docs.lakera.ai": {
+      "name": "docs.lakera.ai",
+      "url": "https://docs.lakera.ai/_mcp/server",
+      "headers": {}
+    },
+    "mcp.checkpoint.com": {
+      "command": "npx",
+      "args": ["-y", "@chkp/documentation-mcp"],
+      "env": {
+        "TELEMETRY_DISABLED": "true"
+      }
+    },
+    "secure-mcp-guard": {
+      "command": "REPLACE_REPO/.venv/bin/secure-mcp-guard",
+      "env": {
+        "SECURE_MCP_IDENTITY_FILE": "REPLACE_REPO/deploy/topology/identity-guard.example.json",
+        "SECURE_MCP_GUARD_REGISTRY": "REPLACE_REPO/deploy/topology/guard-registry.example.json",
+        "SECURE_MCP_AUDIT_LOG_PATH": "REPLACE_REPO/.topology/guard-audit.jsonl",
+        "SECURE_MCP_UPLOAD_DIR": "REPLACE_REPO/.topology/uploads",
+        "SECURE_MCP_DLP_MODE": "redact",
+        "TELEMETRY_DISABLED": "true"
+      }
+    },
+    "secure-mcp-broker": {
+      "_comment": "OPTIONAL — enable only when the agent needs first-party TE/ThreatCloud/Lakera tools. Do not also register @chkp/threat-emulation-mcp or reputation-service.",
+      "command": "REPLACE_REPO/.venv/bin/secure-mcp",
+      "env": {
+        "SECURE_MCP_IDENTITY_FILE": "REPLACE_REPO/deploy/topology/identity-broker.example.json",
+        "CHECKPOINT_TE_API_KEY": "REPLACE_VIA_VAULT",
+        "LAKERA_GUARD_API_KEY": "REPLACE_VIA_VAULT",
+        "CHECKPOINT_TC_API_KEY": "REPLACE_VIA_VAULT",
+        "SECURE_MCP_AUDIT_LOG_PATH": "REPLACE_REPO/.topology/broker-audit.jsonl",
+        "SECURE_MCP_UPLOAD_DIR": "REPLACE_REPO/.topology/uploads",
+        "SECURE_MCP_DLP_MODE": "redact"
+      }
+    }
+  }
+}
